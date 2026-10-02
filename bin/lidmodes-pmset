@@ -1,0 +1,27 @@
+#!/bin/sh
+# LidModes pmset helper — only on|off|restore|status. No eval. No user shell strings.
+set -eu
+PMSET=/usr/bin/pmset
+case "${1:-}" in
+  on)
+    "$PMSET" -a disablesleep 1
+    "$PMSET" -b sleep 0
+    "$PMSET" -b lowpowermode 0
+    "$PMSET" -b tcpkeepalive 1
+    ;;
+  off)
+    "$PMSET" -a disablesleep 0
+    ;;
+  restore)
+    "$PMSET" -a disablesleep 0
+    "$PMSET" -b sleep 1
+    "$PMSET" -b lowpowermode 1
+    ;;
+  status)
+    "$PMSET" -g
+    ;;
+  *)
+    echo "usage: lidmodes-pmset on|off|restore|status" >&2
+    exit 2
+    ;;
+esac
