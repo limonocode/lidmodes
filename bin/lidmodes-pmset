@@ -1,21 +1,108 @@
 #!/bin/sh
-# LidModes pmset helper — only on|off|restore|status. No eval. No user shell strings.
+# LidModes pmset helper — only on|off|restore|status.
+# No eval. No user-supplied shell strings. Absolute paths only.
+# Battery sleep / lowpowermode / tcpkeepalive are snapshotted and put back.
+# Never invent new values (do not force lowpowermode on).
 set -eu
+
 PMSET=/usr/bin/pmset
+AWK=/usr/bin/awk
+DIR=/usr/local/var/lidmodes
+SNAP=$DIR/battery-snapshot
+
+capture_battery() {
+  "$PMSET" -g custom | "$AWK" '
+    /^Battery Power:/ { inb=1; next }
+    inb && /^[^ \t]/ { inb=0 }
+    inb && ($1 == "sleep" || $1 == "lowpowermode" || $1 == "tcpkeepalive") {
+      print $1 "=" $2
+    }
+  '
+}
+
+valid_pair() {
+  case "$1" in
+    sleep|lowpowermode|tcpkeepalive) ;;
+    *) return 1 ;;
+  esac
+  case "$2" in
+    ""|*[!0-9]*) return 1 ;;
+  esac
+  return 0
+}
+
+save_snapshot() {
+  if [ -f "$SNAP" ]; then
+    return 0
+  fi
+  if [ -L "$DIR" ] || [ -L "$SNAP" ]; then
+    echo "lidmodes-pmset: refusing symlink in snapshot path" >&2
+    exit 1
+  fi
+  /bin/mkdir -p "$DIR"
+  if [ "$(/usr/bin/id -u)" -eq 0 ]; then
+    /usr/sbin/chown root:wheel "$DIR"
+  fi
+  /bin/chmod 755 "$DIR"
+  tmp="$(/usr/bin/mktemp "$DIR/snapshot.XXXXXX")"
+  if ! capture_battery >"$tmp"; then
+    /bin/rm -f "$tmp"
+    exit 1
+  fi
+  if [ ! -s "$tmp" ]; then
+    /bin/rm -f "$tmp"
+    return 0
+  fi
+  while IFS='=' read -r key val; do
+    [ -n "$key" ] || continue
+    if ! valid_pair "$key" "$val"; then
+      /bin/rm -f "$tmp"
+      echo "lidmodes-pmset: unexpected pmset value" >&2
+      exit 1
+    fi
+  done <"$tmp"
+  /bin/mv "$tmp" "$SNAP"
+  /bin/chmod 644 "$SNAP"
+  if [ "$(/usr/bin/id -u)" -eq 0 ]; then
+    /usr/sbin/chown root:wheel "$SNAP"
+  fi
+}
+
+apply_snapshot() {
+  if [ ! -f "$SNAP" ]; then
+    return 0
+  fi
+  if [ -L "$SNAP" ]; then
+    echo "lidmodes-pmset: refusing symlink snapshot" >&2
+    exit 1
+  fi
+  while IFS='=' read -r key val; do
+    [ -n "${key:-}" ] || continue
+    if ! valid_pair "$key" "$val"; then
+      echo "lidmodes-pmset: bad snapshot line" >&2
+      exit 1
+    fi
+  done <"$SNAP"
+  while IFS='=' read -r key val; do
+    [ -n "${key:-}" ] || continue
+    "$PMSET" -b "$key" "$val"
+  done <"$SNAP"
+  /bin/rm -f "$SNAP"
+}
+
 case "${1:-}" in
   on)
+    save_snapshot
     "$PMSET" -a disablesleep 1
-    "$PMSET" -b sleep 0
-    "$PMSET" -b lowpowermode 0
-    "$PMSET" -b tcpkeepalive 1
+    if [ -f "$SNAP" ]; then
+      "$PMSET" -b sleep 0
+      "$PMSET" -b lowpowermode 0
+      "$PMSET" -b tcpkeepalive 1
+    fi
     ;;
-  off)
+  off|restore)
     "$PMSET" -a disablesleep 0
-    ;;
-  restore)
-    "$PMSET" -a disablesleep 0
-    "$PMSET" -b sleep 1
-    "$PMSET" -b lowpowermode 1
+    apply_snapshot
     ;;
   status)
     "$PMSET" -g

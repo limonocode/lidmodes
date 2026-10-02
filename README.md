@@ -19,6 +19,8 @@ LidModes is a tiny macOS menu bar app: **Default** (normal sleep), **Stay awake*
 - **Not for use in a bag.**
 - Display dim to 0 is best-effort on the built-in panel; with the lid closed the panel is dark anyway.
 - While lid-closed is on, LidModes plays a soft system **Tink** every **5 minutes** so you can hear the Mac is still awake (toggle in menu; default ON).
+- **Touch ID** or **Keychain** can be required before lid-closed turns on. Turning it off does not ask, so sleep can be restored.
+- Passwordless sudo is **off** until you check **I agree — passwordless sudo** and enter an admin password once.
 - We do **not** claim “lid closed always works.”
 
 ## Install (dev)
@@ -29,17 +31,19 @@ LidModes is a tiny macOS menu bar app: **Default** (normal sleep), **Stay awake*
 
 Requires macOS 14+. Menu bar icon appears after launch.
 
-### One-time passwordless sudo (for lid-closed)
+Lid-closed works without a standing sudo rule: macOS asks for an administrator password or Touch ID each time power settings change. In the menu you can instead require **Touch ID** or **Keychain** before the mode turns on.
 
-From the menu: **Install passwordless sudo** (one admin password), or:
+### Optional passwordless sudo
+
+The menu checkbox **I agree — passwordless sudo** is off until you turn it on. That is the agreement: one admin password, then a path-pinned helper at `/usr/local/libexec/lidmodes-pmset` and a narrow `/etc/sudoers.d/lidmodes` entry. The rules are in the menu. Details: [SECURITY.md](SECURITY.md).
+
+From Terminal, the same install is:
 
 ```bash
 ./scripts/install-nopasswd.sh
 ```
 
-This installs a path-pinned helper at `/usr/local/libexec/lidmodes-pmset` and a narrow `/etc/sudoers.d/lidmodes` entry. Details: [SECURITY.md](SECURITY.md).
-
-Uninstall from the menu or `./scripts/uninstall-nopasswd.sh`.
+Uncheck the menu item, or run `./scripts/uninstall-nopasswd.sh`.
 
 ## Compared with
 

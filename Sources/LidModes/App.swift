@@ -23,11 +23,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        let sem = DispatchSemaphore(value: 0)
-        Task { @MainActor in
-            SleepController.shared.prepareForTermination()
-            sem.signal()
+        // A semaphore here would block the main actor, so cleanup would never run.
+        let cleanup = {
+            MainActor.assumeIsolated {
+                SleepController.shared.prepareForTermination()
+            }
         }
-        _ = sem.wait(timeout: .now() + 2)
+        if Thread.isMainThread {
+            cleanup()
+        } else {
+            DispatchQueue.main.sync(execute: cleanup)
+        }
     }
 }
