@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 
 final class CaffeinateProcess {
@@ -19,10 +20,17 @@ final class CaffeinateProcess {
     }
 
     func stop() {
-        if let p = process, p.isRunning {
-            p.terminate()
+        guard let p = process else { return }
+        defer { process = nil }
+        guard p.isRunning else { return }
+        p.terminate()
+        let deadline = Date().addingTimeInterval(1)
+        while p.isRunning && Date() < deadline {
+            Thread.sleep(forTimeInterval: 0.05)
+        }
+        if p.isRunning {
+            kill(p.processIdentifier, SIGKILL)
             p.waitUntilExit()
         }
-        process = nil
     }
 }

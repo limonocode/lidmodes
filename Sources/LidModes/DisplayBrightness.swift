@@ -3,23 +3,42 @@ import IOKit
 
 /// Best-effort built-in display brightness via IOKit. No sudo.
 enum DisplayBrightness {
-    private static var saved: Float?
+    private static let savedKey = "lidmodes.savedBrightness"
+    private static var saved: Float? = loadSaved()
 
     private static let brightnessKey = "brightness" as CFString
 
     static var isDimmed: Bool { saved != nil }
 
     static func dimToZeroSavingPrevious() {
-        guard saved == nil else { return }
-        guard let current = readBrightness() else { return }
-        saved = current
+        if saved == nil {
+            guard let current = readBrightness() else { return }
+            saved = current
+            persist()
+        }
         _ = writeBrightness(0)
     }
 
     static func restoreIfNeeded() {
         guard let value = saved else { return }
-        _ = writeBrightness(value)
-        saved = nil
+        if writeBrightness(value) {
+            saved = nil
+            persist()
+        }
+    }
+
+    private static func loadSaved() -> Float? {
+        let defaults = UserDefaults.standard
+        guard defaults.object(forKey: savedKey) != nil else { return nil }
+        return defaults.float(forKey: savedKey)
+    }
+
+    private static func persist() {
+        if let saved {
+            UserDefaults.standard.set(saved, forKey: savedKey)
+        } else {
+            UserDefaults.standard.removeObject(forKey: savedKey)
+        }
     }
 
     // MARK: - IOKit
@@ -33,11 +52,13 @@ enum DisplayBrightness {
     }
 
     private static func writeBrightness(_ value: Float) -> Bool {
-        withDisplayService { service in
-            let clamped = max(0, min(1, value))
+        let clamped = max(0, min(1, value))
+        let wrote = withDisplayService { service -> Bool? in
             let err = IODisplaySetFloatParameter(service, 0, brightnessKey, clamped)
-            return err == KERN_SUCCESS
-        } ?? false
+            // nil keeps walking displays; false would stop on the first failure.
+            return err == KERN_SUCCESS ? true : nil
+        }
+        return wrote == true
     }
 
     private static func withDisplayService<T>(_ body: (io_service_t) -> T?) -> T? {
